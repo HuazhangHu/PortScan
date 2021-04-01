@@ -34,7 +34,7 @@ class Portscan():
                 logger.info("初始化扫描组件...")
                 self.log(log="[*]初始化扫描组件...", current=3, total=100)
                 self.ip=ip
-                nm=nmap.PortScanner()
+                # nm=nmap.PortScanner()
                 logger.info("扫描组件初始化成功...")
                 self.log(log="[*]扫描组件初始化成功...", current=10, total=100)
                 #tcp扫描
@@ -51,18 +51,18 @@ class Portscan():
                         else:
                             self.log(log="[*]正在进行tcp协议半连接扫描...", current=60, total=100)
                         if tcp_start and tcp_end:
-                            for i in range(tcp_start, tcp_end):
+                            for i in range(tcp_start, tcp_end+1):
                                 self.q.put(i)
-                            my_threads = [threading.Thread(target=self.tcp_scan,args=(connect)) for i in range(512)]
+                            my_threads = [threading.Thread(target=self.tcp_scan,args=(connect)) for i in range(2048)]
                         else:
-                            for i in range(1, 1000):
+                            for i in range(1, 1001):
                                 self.q.put(i)
-                            my_threads = [threading.Thread(target=self.tcp_scan, args=(connect)) for i in range(512)]
+                            my_threads = [threading.Thread(target=self.tcp_scan, args=(connect)) for i in range(2048)]
                         for t in my_threads:
                             t.start()
                         for t in my_threads:
                             t.join()
-                        res=nm.scan(hosts=ip,arguments='-sS -p '+",".join(str(i) for i in self.tcp_ports ))
+                        # res=nm.scan(hosts=ip,arguments='-sS -p '+",".join(str(i) for i in self.tcp_ports ))
 
                     else:
                         #TCP全连接扫描
@@ -74,32 +74,33 @@ class Portscan():
                         else:
                             self.log(log="[*]正在进行tcp协议半连接扫描...", current=60, total=100)
                         if tcp_start and tcp_end:
-                            for i in range(tcp_start, tcp_end):
+                            for i in range(int(tcp_start), int(tcp_end)):
                                 self.q.put(i)
-                            my_threads = [threading.Thread(target=self.tcp_scan, args=(connect)) for i in range(512)]
+                            my_threads = [threading.Thread(target=self.tcp_scan, args=(connect)) for i in range(2048)]
                         else:
                             for i in range(1, 1000):
                                 self.q.put(i)
-                            my_threads = [threading.Thread(target=self.tcp_scan, args=(connect)) for i in range(512)]
+                            my_threads = [threading.Thread(target=self.tcp_scan, args=(connect)) for i in range(2048)]
                         for t in my_threads:
                             t.start()
                         for t in my_threads:
                             t.join()
-                        res = nm.scan(hosts=ip, arguments='-sT -p ' + ",".join(str(i) for i in self.tcp_ports))
+                        # res = nm.scan(hosts=ip, arguments='-sT -p ' + ",".join(str(i) for i in self.tcp_ports))
 
+                    # ret = dict(res)['scan'][ip]
+                    # if 'tcp' in ret:
+                    #     tcp_port = ret['tcp']
+                    # else:
+                    #     tcp_port = []
+                    # self.result = self.result + [
+                    #     {"ip": ip, "port": str(key), "protocol": "TCP", "service": str(tcp_port[key]['name']),
+                    #      "state": str(tcp_port[key]['state'])} for key in tcp_port]
                     logger.info("tcp协议扫描完成...")
                     if 'udp' in str(protocol).lower():
                         self.log(log="[*]tcp协议扫描完成...", current=50, total=100)
                     else:
                         self.log(log="[*]tcp协议扫描完成...", current=100, total=100)
-                    ret = dict(res)['scan'][ip]
-                    if 'tcp' in ret:
-                        tcp_port = ret['tcp']
-                    else:
-                        tcp_port = []
-                    self.result = self.result + [
-                        {"ip": ip, "port": str(key), "protocol": "TCP", "service": str(tcp_port[key]['name']),
-                         "state": str(tcp_port[key]['state'])} for key in tcp_port]
+
                 #udp扫描
                 if 'udp' in str(protocol).lower():
                     print("正在进行udp协议扫描...")
@@ -108,27 +109,27 @@ class Portscan():
                     else:
                         self.log(log="[*]正在进行udp协议扫描...", current=50, total=100)
                     if udp_start and udp_end:
-                        for i in range(udp_start, udp_end):
+                        for i in range(int(udp_start), int(udp_end)):
                             self.q.put(i)
-                        my_threads = [threading.Thread(target=self.udp_scan) for i in range(512)]
+                        my_threads = [threading.Thread(target=self.udp_scan) for i in range(8)]
                     else:
                         for i in range(1, 100):
                             self.q.put(i)
-                        my_threads = [threading.Thread(target=self.udp_scan) for i in range(512)]
+                        my_threads = [threading.Thread(target=self.udp_scan) for i in range(8)]
                     for t in my_threads:
                         t.start()
                     for t in my_threads:
                         t.join()
-                    res = nm.scan(hosts=ip, arguments='-sU -p ' + ",".join(str(i) for i in self.udp_ports))
-                    print('over')
-                    ret = dict(res)['scan'][ip]
-                    if 'udp' in ret:
-                        udp_port = ret['udp']
-                    else:
-                        udp_port = []
-                    logger.info("udp协议扫描完成...")
-                    self.log(log="[*]udp协议扫描完成...", current=100, total=100)
-                    self.result = self.result + [{"ip": ip, "port": str(key), "protocol": "UDP", "service": str(udp_port[key]['name']),"state": str(udp_port[key]['state'])} for key in udp_port]
+                    # res = nm.scan(hosts=ip, arguments='-sU -p ' + ",".join(str(i) for i in self.udp_ports))
+                    # ret = dict(res)['scan'][ip]
+                    # if 'udp' in ret:
+                    #     udp_port = ret['udp']
+                    # else:
+                    #     udp_port = []
+                    # self.result = self.result + [{"ip": ip, "port": str(key), "protocol": "UDP", "service": str(udp_port[key]['name']),"state": str(udp_port[key]['state'])} for key in udp_port]
+                    #
+                    # logger.info("udp协议扫描完成...")
+                    # self.log(log="[*]udp协议扫描完成...", current=100, total=100)
                 logger.info(self.result)
                 self.log(log="[*]扫描已完成", Done=True, current=100, total=100)
                 return {'status': 1, 'data': self.result, 'msg': "端口扫描成功"}
@@ -183,6 +184,16 @@ class Portscan():
                     if "1" in connect:
                         # 半连接
                         self.tcp_ports.append(port)
+                        nm=nmap.PortScanner()
+                        res = nm.scan(hosts=self.ip, arguments='-sS -p ' +str(port))
+                        ret = dict(res)['scan'][self.ip]
+                        if 'tcp' in ret:
+                            tcp_port = ret['tcp']
+                        else:
+                            tcp_port = []
+                        self.result = self.result + [
+                            {"ip": self.ip, "port": str(key), "protocol": "TCP", "service": str(tcp_port[key]['name']),
+                             "state": str(tcp_port[key]['state'])} for key in tcp_port]
                         print('[+]TCP SYN端口扫描 %s %d \033[1;32;40m Open \033[0m' % (self.ip, port))
                     else:
                         # 全连接
@@ -190,7 +201,18 @@ class Portscan():
                         response2 = sr1(packet2, timeout=2, verbose=0)
                         if response2:
                             self.tcp_ports.append(port)
+                            nm = nmap.PortScanner()
+                            res = nm.scan(hosts=self.ip, arguments='-sT -p ' + str(port))
                             print('[+]TCP SYN端口扫描 %s %d \033[1;32;40m Open \033[0m' % (self.ip, port))
+                            ret = dict(res)['scan'][self.ip]
+                            if 'tcp' in ret:
+                                tcp_port = ret['tcp']
+                            else:
+                                tcp_port = []
+                            self.result = self.result + [
+                                {"ip": self.ip, "port": str(key), "protocol": "TCP", "service": str(tcp_port[key]['name']),
+                                 "state": str(tcp_port[key]['state'])} for key in tcp_port]
+
                 elif response[TCP].flags == 'RA':
                     # RST
                     print('[+]TCP SYN端口扫描 %s %d \033[91m Closed \033[0m' % (self.ip, port))
@@ -202,41 +224,30 @@ class Portscan():
             port = self.q.get()
             packet = IP(dst=self.ip) / UDP(dport=port,sport=randint(1,65535))
             response = sr1(packet, timeout=2, verbose=0)
+            time.sleep(1)
             # 是否返回icmp
             if response is None:
-                self.udp_ports.append(port)
+                nm=nmap.PortScanner()
+                res = nm.scan(hosts=self.ip, arguments='-sU -p ' +str(port))
+                ret = dict(res)['scan'][self.ip]
+                if 'udp' in ret:
+                    udp_port = ret['udp']
+                else:
+                    udp_port = []
+                self.result = self.result + [
+                    {"ip": self.ip, "port": str(key), "protocol": "UDP", "service": str(udp_port[key]['name']),
+                     "state": str(udp_port[key]['state'])} for key in udp_port]
                 print('[+]UDP端口扫描 %s %d \033[1;32;40m OPEN \033[0m' % (self.ip, port))
+                self.udp_ports.append(port)
             else:
                 print('[+]UDP端口扫描 %s %d \033[91m Closed \033[0m' % (self.ip, port))
-
-            # if not response:
-            #     retrans = []
-            #     for count in range(0, 3):
-            #         retrans.append(sr1(IP(dst=self.ip) / UDP(dport=port), timeout=2))
-            #     for item in retrans:
-            #         if (str(type(item)) != ""):
-            #             self.udp_scan()
-            #     print("Open|Filtered")
-            # else:
-            #     if (response.haslayer(UDP)):
-            #         self.udp_ports.append(port)
-            #         print('[+]UDP端口扫描 %s %d \033[1;32;40m OPEN \033[0m' % (self.ip, port))
-            #         print("Open")
-            #     elif (response.haslayer(ICMP)):
-            #         if (int(response.getlayer(ICMP).type) == 3 and int(response.getlayer(ICMP).code) == 3):
-            #             print("Closed")
-            #         elif (int(response.getlayer(ICMP).type) == 3 and int(response.getlayer(ICMP).code) in [1, 2, 9,10, 13]):
-            #             print("Filtered")
-            #     else:
-            #         pass
-
         return True
 
 
 if __name__ == '__main__':
     start_time = time.time()
     scan = Portscan()
-    scan.run(ip='172.16.120.50', protocol='tcp', tcp_start=1, tcp_end=1000,udp_start=1,udp_end=1000,connect="1")
+    scan.run(ip='172.16.20.23', protocol='udp', tcp_start=1, tcp_end=65535,udp_start=1,udp_end=100,connect="1")
     end_time=time.time()
     print(scan.result)
     print('spend time:',end_time-start_time,'s')
