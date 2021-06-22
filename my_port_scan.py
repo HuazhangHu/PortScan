@@ -7,6 +7,8 @@ from app.system.utils.ncConfig import NCConfig
 # 端口扫描检测项对应的数据库表映射类
 from app.report.report_problem import del_problem, add_problem
 
+import os
+
 class Item_oua_portscan(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     ip = db.Column(db.String(20))
@@ -28,15 +30,31 @@ class my_port_scan(Portscan):
         super().__init__()
         self.task_id = task_id
 
-    def log(self, log, Done=False, current=None, total=None):
-        front_log(self.task_id, my_port_scan.id, log, Done, current, total)
+    def log(self, log, Done=False, current=None, total=None,msg=None):
+        front_log(self.task_id, my_port_scan.id, log, Done, current, total, msg)
+
+    @staticmethod
+    def test_ip(src,ip):
+        '''
+        测试ip是否能够ping通
+        :param ip:目标ip src:源ip
+        :return: Bool True能够ping通 False 不能ping通
+        '''
+        backinfo = os.system('ping -I {0} -c 1 -w 10 {1}' .format(src,ip))
+        #backinfo 0 能够ping通,1不通
+        if not backinfo:
+            return True
+        else:
+            return False
 
     @staticmethod
     def get_iface():
         '''
         获取网卡信息
-        return name 网卡名称，为空表示无该网卡信息
-               src 网卡ip地址
+        return
+        1 wifi 2热点 4以太网线 vlan_id vlan
+        name 网卡名称，为空表示无该网卡信息
+        src 网卡ip地址
         '''
         iface={'1': {'name':'','src':''},
                '2':{'name':'','src':''},
@@ -57,6 +75,17 @@ class my_port_scan(Portscan):
         if all_info[0]['IPAddr']:
             iface['1']['name'] = all_info[0]['NicName']
             iface['1']['src']=all_info[0]['IPAddr']
+        # 获取已配置的vlanID，并加入网卡信息
+        ret_vir = NCConfig.get_all_virtual_iface_info()
+        for vir in ret_vir:
+            if '.' not in vir['NicName']:
+                continue
+            else:
+                split_ret = vir['NicName'].split('.')
+                id=split_ret[1]
+                vlan_name='vlan_'+id
+                iface[vlan_name]={'name':vir['NicName'],'src':vir['IPAddr']}
+
         return iface
 
     @staticmethod
