@@ -1,5 +1,5 @@
 #coding:utf-8
-#多线程扫描
+#portscan test
 import logging
 import os
 logger = logging.getLogger(__name__)
