@@ -31,7 +31,8 @@ class my_port_scan(Portscan):
         self.task_id = task_id
 
     def log(self, log, Done=False, current=None, total=None,msg=None):
-        front_log(self.task_id, my_port_scan.id, log, Done, current, total, msg)
+        #log函数参数过多，必须指定
+        front_log(task_id=self.task_id, test_id=my_port_scan.id,log= log,Done=Done, current=current,total= total,msg= msg)
 
     @staticmethod
     def test_ip(src,ip):
@@ -133,6 +134,15 @@ class my_port_scan(Portscan):
                     task_id,  my_port_scan.id, '危险端口{}({})'.format(p['port'], p['service']), severity='',
                     description='扫描协议：{},{}:{}'.format(p['protocol'], "端口状态", p['state']), advice=advice, test_object='{}'.format(p['ip'])
                 )
-
+                # 分析是否通过标准
+                # standard_id = Task(task_id).get_standard_id()
+                # if standard_id is None:
+                #     return True
+                # analysis_standard = True
+                # if standard_id == 'S-01':
+                #     analysis_standard = my_port_scan.analysis_S1(result)
+                # else:
+                #     pass
+                # return analysis_standard
         return True
 
