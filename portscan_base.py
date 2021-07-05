@@ -1,10 +1,7 @@
 #coding:utf-8
 '''
 itb 端口与服务扫描
-0621 update:
-    1.新增mac地址指定
-    2.ping不通询问是否继续发包
-    3.边扫描边打印结果
+0630 改成二层发包
 '''
 
 from random import randint
@@ -12,11 +9,13 @@ import threading
 from queue import Queue
 
 import nmap
+import time
 from scapy.layers.inet import TCP, IP, UDP,Ether
-from scapy.all import *
+from scapy.all import sr1,srp1
 from libnmap.process import NmapProcess
 from router import logger
 from app.system.utils.ncConfig import NCConfig
+import netifaces
 # import logging
 #
 # logger = logging.getLogger(__name__)
@@ -31,6 +30,7 @@ class Portscan():
         self.ultimate = Queue()
         self.ip=''
         self.MAC=''
+        self.src=''
         self.connect='1'
         self.thread_num=128#线程数
         self.q = Queue()
@@ -59,6 +59,7 @@ class Portscan():
                           'data': list[dict{'ip','port','protocol','server','state'} , 'msg'}
         '''
         self.ip = ip
+        self.src=src
         self.MAC=MAC
         self.result=Queue()
         self.ultimate=Queue()#存放最终的结果
@@ -67,9 +68,12 @@ class Portscan():
         self.connect=connect
         start_time=time.time()
         self.iface=iface
+        self.src_mac=netifaces.ifaddresses(iface)[17][0]['addr']#获取该网卡的MAC地址
+        print(' -------- source mac address :'+str(self.src_mac)+' -------- ')
         self.log(log="[*]开始端口扫描...")
         self.log(log="[*]目标IP地址：%s" %self.ip)
         if self.MAC:
+            self.MAC=self.MAC.replace('-',':')#MAC地址格式转换
             self.log(log="[*]目标MAC地址为：%s"%self.MAC)
         thread_pool=[]
         try:
@@ -89,7 +93,12 @@ class Portscan():
             if 'udp' in str(protocol).lower():
                 logger.info("正在进行udp协议扫描...")
                 self.log(log="[*]正在进行udp协议扫描...")
-                thread_udp = threading.Thread(target=self.udp_scan, args=(udp_start, udp_end))
+                if udp_start and udp_end:
+                    self.udp_total = int(udp_end) - int(udp_start) + 1
+                    thread_udp = threading.Thread(target=self.udp_scan, args=(udp_start, udp_end))
+                else:
+                    self.udp_total = 1000
+                    thread_udp = threading.Thread(target=self.udp_scan, args=(1, 1000))
                 thread_pool.append(thread_udp)
                 if 'tcp' not in str(protocol).lower():
                     flag=2
@@ -149,6 +158,7 @@ class Portscan():
         :param flag:integer 1:tcp 2:udp 3: tcp and udp 0:error
         :return:
         0622 update:修改停止扫描显示剩余结果
+
         '''
 
         if flag == 1:  # 只进行tcp扫描
@@ -158,10 +168,9 @@ class Portscan():
                     self.log(log='[*]TCP端口扫描完成%d/%d' % (self.tcp_done.qsize(),self.tcp_total), current=self.tcp_done.qsize(),total=self.tcp_total,msg=current_result)
                     time.sleep(self.sleep)
                 else:
+                    current_result = self.get_result()
+                    self.log(log='[*]TCP端口扫描完成%d/%d' % (self.tcp_done.qsize(), self.tcp_total),current=self.tcp_done.qsize(), total=self.tcp_total, msg=current_result)
                     break
-            #当完成100%或停止扫描时，将丢列中的所有结果输出
-            current_result = self.get_result()
-            self.log(log='[*]TCP端口扫描完成%d/%d' % (self.tcp_done.qsize(), self.tcp_total), current=self.tcp_done.qsize(),total=self.tcp_total, msg=current_result)
 
         elif flag == 2:  # 只进行udp扫描
             old=0
@@ -173,15 +182,17 @@ class Portscan():
                         self.log(log='[*]UDP端口扫描完成%d/%d' % (current,self.udp_total), current=current,total=self.udp_total,msg=current_result)
                         old=current
                         time.sleep(self.sleep)
-                    if current == self.udp_total:#完成100%
+                    if current == self.udp_total:
+                        current_result = self.get_result()
+                        self.log(log='[*]UDP端口扫描完成%d/%d' % (current, self.udp_total), current=current,total=self.udp_total, msg=current_result)
                         break
-            current_result = self.get_result()
-            self.log(log='[*]UDP端口扫描完成%d/%d' % (current, self.udp_total), current=current, total=self.udp_total,msg=current_result)
 
-        elif flag == 3: # tcp,udp同时进行
+        elif flag == 3: #0623修复UD/TCP log bug
             old=0
+            udp_current=0
+            tcp_current=0
             while stop==0:
-                if not self.udp_done.empty():
+                if not self.udp_done.empty():#UDP未结束
                     tcp_current=self.tcp_done.qsize()
                     udp_current=self.udp_done.get()
                     current=tcp_current+udp_current
@@ -189,10 +200,16 @@ class Portscan():
                         current_result = self.get_result()
                         self.log(log='[*]端口扫描完成%d/%d' % (current,self.tcp_total + self.udp_total),current=current,total=self.tcp_total + self.udp_total,msg=current_result)
                         old=current
-                    if udp_current==self.udp_total and tcp_current==self.tcp_total:#完成100%
+                        time.sleep(self.sleep)
+                if udp_current==self.udp_total:#UDP已结束
+                    if tcp_current!=self.tcp_total:#TCP未结束
+                        tcp_current=self.tcp_done.qsize()
+                        current=tcp_current+udp_current
+                        current_result = self.get_result()
+                        self.log(log='[*]端口扫描完成%d/%d' % (current, self.tcp_total + self.udp_total), current=current,total=self.tcp_total + self.udp_total, msg=current_result)
+                        time.sleep(self.sleep)
+                    else:#TCP已结束
                         break
-            current_result = self.get_result()
-            self.log(log='[*]端口扫描完成%d/%d' % (current, self.tcp_total + self.udp_total), current=current,total=self.tcp_total + self.udp_total, msg=current_result)
         else:
             return
 
@@ -227,8 +244,7 @@ class Portscan():
 
     def tcp_scan_port(self):
         '''
-        扫描tcp相应端口 update 0621 增加链路层发包
-        :return: bool
+        扫描tcp相应端口 update 0622 修复全连接bug
         '''
         while not self.q.empty():
             if stop==1:
@@ -236,52 +252,44 @@ class Portscan():
             port = self.q.get()
             # SYN扫描,sr1返回一个应答包
             if self.MAC=='':
-                #不指定MAC地址，发三层包
-                packet = IP(dst=self.ip) / TCP(dport=port, flags='S')
-                response = sr1(packet, timeout=2, verbose=0,iface=self.iface)
+                packet =  Ether(src=self.src_mac)/IP(dst=self.ip,src=self.src) / TCP(dport=port, flags='S')
             else:
-                #指定MAC地址，发二层包
-                packet = Ether(dst=self.MAC) / IP(dst=self.ip) / TCP(dport=port, flags='S')
-                response = srp1(packet, timeout=2, verbose=0,iface=self.iface)
+                #指定目标MAC地址
+                packet = Ether(dst=self.MAC,src=self.src_mac) / IP(dst=self.ip,src=self.src) / TCP(dport=port, flags='S')
+            response = srp1(packet, timeout=2, verbose=0,iface=self.iface)
 
             if not response:
-                pass
+                pass   
             elif response.haslayer(TCP):
                 if response[TCP].flags == 'SA' and stop==0:
                     if "1" in self.connect:
                         # 半连接
                         nm = nmap.PortScanner()
-                        res = nm.scan(hosts=self.ip, arguments='-sS -e ' + str(self.iface)+' -p '+str(port))
+                        res = nm.scan(hosts=self.ip, arguments='-sS --send-ip -e ' + str(self.iface)+' -p '+str(port))
                         # logger.info('[+]TCP SYN端口扫描 %s %d \033[1;32;40m Open \033[0m' % (self.ip, port))
                     else:
-                        # 全连接
                         if self.MAC=='':
-                            packet2= IP(dst=self.ip) / TCP(dport=port, flags='A', ack=(response[TCP].seq + 1))
-                            response2 = sr1(packet2, timeout=2, verbose=0,iface=self.iface)
+                            packet2= Ether(src=self.src_mac)/IP(dst=self.ip,src=self.src) / TCP(dport=port, flags='A', ack=(response[TCP].seq + 1))
                         else:
-                            packet2 = Ether(dst=self.MAC)/IP(dst=self.ip) / TCP(dport=port, flags='A', ack=(response[TCP].seq + 1))
-                            response2 = srp1(packet2, timeout=2, verbose=0,iface=self.iface)
-
+                            packet2 = Ether(dst=self.MAC,src=self.src_mac)/IP(dst=self.ip,src=self.src) / TCP(dport=port, flags='A', ack=(response[TCP].seq + 1))
+                        response2 = srp1(packet2, timeout=2, verbose=0,iface=self.iface)
                         if response2 and stop==0:
                             nm = nmap.PortScanner()
-                            res = nm.scan(hosts=self.ip, arguments='-sT -e '+str(self.iface)+' -p ' + str(port))
+                            res = nm.scan(hosts=self.ip, arguments='-sT --send-ip -e '+str(self.iface)+' -p ' + str(port))
                         else:
-                            return False
+                            res=None
 
                     tcp_ports = []
-                    if dict(res)['scan'] and res:
-                        ret = dict(res)['scan'][self.ip]
-                        if 'tcp' in ret:
-                            tcp_ports = ret['tcp']
-                    for port in tcp_ports:
-                        self.result.put({"ip": self.ip, "port": str(port), "protocol": "TCP",
-                                            "service": str(tcp_ports[port]['name']),
-                                            "state": str(tcp_ports[port]['state'])})
+                    if res:
+                        if dict(res)['scan']:
+                            ret = dict(res)['scan'][self.ip]
+                            if 'tcp' in ret:
+                                tcp_ports = ret['tcp']
+                        for port in tcp_ports:
+                            self.result.put({"ip": self.ip, "port": str(port), "protocol": "TCP","service": str(tcp_ports[port]['name']),"state": str(tcp_ports[port]['state'])})
                 elif response[TCP].flags == 'RA':
                     pass
             self.tcp_done.put(port)
-            # self.tcp_done.put(self.done.qsize())
-        return True
 
     def udp_scan(self, udp_start, udp_end):
         '''
@@ -290,13 +298,7 @@ class Portscan():
         :param udp_end:
         :return: json
         '''
-        if udp_start and udp_end:
-            nmap_proc = NmapProcess(targets=self.ip, options='-sU -e '+str(self.iface)+' -p ' + str(udp_start) + "-" + str(udp_end))
-            self.udp_total = int(udp_end) - int(udp_start) + 1
-        else:
-            # self.log('[*]正在扫描常见UDP端口')
-            nmap_proc = NmapProcess(targets=self.ip, options='-sU -e '+str(self.iface)+' -p 1-1000')
-            self.udp_total = 1000
+        nmap_proc = NmapProcess(targets=self.ip,options='-sU -e ' + str(self.iface) + ' -p ' + str(udp_start) + "-" + str(udp_end))
         nmap_proc.run_background()
         while nmap_proc.is_running() and stop == 0:
             current= float(nmap_proc.progress)*self.udp_total*0.01
