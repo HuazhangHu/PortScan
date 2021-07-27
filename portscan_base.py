@@ -1,7 +1,7 @@
 #coding:utf-8
 '''
 itb 端口与服务扫描
-0630 改成二层发包
+0725 MAC地址获取
 '''
 
 from random import randint
@@ -16,6 +16,8 @@ from libnmap.process import NmapProcess
 from router import logger
 from app.system.utils.ncConfig import NCConfig
 import netifaces
+import os
+import re
 # import logging
 #
 # logger = logging.getLogger(__name__)
@@ -44,7 +46,7 @@ class Portscan():
     def run(self, ip, src, iface, MAC="", protocol="tcp", tcp_start=None, tcp_end=None, udp_start=1, udp_end=1000, connect="1"):
         '''
         Args:
-            ip: string 扫描的ip地址
+            ip: string 目标ip地址
             src:string 源ip地址
             iface:string 网卡名称
             MAC:string MAC地址
@@ -60,7 +62,6 @@ class Portscan():
         '''
         self.ip = ip
         self.src=src
-        self.MAC=MAC
         self.result=Queue()
         self.ultimate=Queue()#存放最终的结果
         self.tcp_done = Queue()
@@ -68,13 +69,10 @@ class Portscan():
         self.connect=connect
         start_time=time.time()
         self.iface=iface
-        self.src_mac=netifaces.ifaddresses(iface)[17][0]['addr']#获取该网卡的MAC地址
-        print(' -------- source mac address :'+str(self.src_mac)+' -------- ')
-        self.log(log="[*]开始端口扫描...")
-        self.log(log="[*]目标IP地址：%s" %self.ip)
-        if self.MAC:
-            self.MAC=self.MAC.replace('-',':')#MAC地址格式转换
-            self.log(log="[*]目标MAC地址为：%s"%self.MAC)
+        self.src_mac = netifaces.ifaddresses(iface)[17][0]['addr']
+        self.dst_mac = MAC.replace('-', ':')  # MAC地址格式转换
+        self.log(log="[*]目标IP地址：%s" % self.ip)
+        logger.info("[*]目标MAC地址为：%s" % self.dst_mac)
         thread_pool=[]
         try:
             flag=0
@@ -250,14 +248,8 @@ class Portscan():
             if stop==1:
                 break
             port = self.q.get()
-            # SYN扫描,sr1返回一个应答包
-            if self.MAC=='':
-                packet =  Ether(src=self.src_mac)/IP(dst=self.ip,src=self.src) / TCP(dport=port, flags='S')
-            else:
-                #指定目标MAC地址
-                packet = Ether(dst=self.MAC,src=self.src_mac) / IP(dst=self.ip,src=self.src) / TCP(dport=port, flags='S')
+            packet=Ether(dst=self.dst_mac,src=self.src_mac)/IP(dst=self.ip,src=self.src) / TCP(dport=port, flags='S')
             response = srp1(packet, timeout=2, verbose=0,iface=self.iface)
-
             if not response:
                 pass   
             elif response.haslayer(TCP):
@@ -268,10 +260,7 @@ class Portscan():
                         res = nm.scan(hosts=self.ip, arguments='-sS --send-ip -e ' + str(self.iface)+' -p '+str(port))
                         # logger.info('[+]TCP SYN端口扫描 %s %d \033[1;32;40m Open \033[0m' % (self.ip, port))
                     else:
-                        if self.MAC=='':
-                            packet2= Ether(src=self.src_mac)/IP(dst=self.ip,src=self.src) / TCP(dport=port, flags='A', ack=(response[TCP].seq + 1))
-                        else:
-                            packet2 = Ether(dst=self.MAC,src=self.src_mac)/IP(dst=self.ip,src=self.src) / TCP(dport=port, flags='A', ack=(response[TCP].seq + 1))
+                        packet2 = Ether(dst=self.dst_mac,src=self.src_mac) / IP(dst=self.ip, src=self.src) / TCP(dport=port, flags='A', ack=(response[TCP].seq + 1))
                         response2 = srp1(packet2, timeout=2, verbose=0,iface=self.iface)
                         if response2 and stop==0:
                             nm = nmap.PortScanner()
@@ -319,6 +308,7 @@ class Portscan():
                     {"ip": self.ip, "port": str(port), "protocol": "UDP", "service": str(udp_ports[port]['name']),
                      "state": str(udp_ports[port]["state"])})
         self.udp_done.put(self.udp_total)
+
 
 # if __name__ == '__main__':
 #     scan = Portscan()
