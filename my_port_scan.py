@@ -8,6 +8,10 @@ from app.system.utils.ncConfig import NCConfig
 from app.report.report_problem import del_problem, add_problem
 
 import os
+from scapy.layers.inet import IP,Ether,ICMP
+from scapy.all import sr1,srp1
+import netifaces
+import IPy
 
 class Item_oua_portscan(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -35,19 +39,69 @@ class my_port_scan(Portscan):
         front_log(task_id=self.task_id, test_id=my_port_scan.id,log= log,Done=Done, current=current,total= total,msg= msg)
 
     @staticmethod
-    def test_ip(src,ip):
+    def ping_ip(src,ip):
         '''
         测试ip是否能够ping通
         :param ip:目标ip src:源ip
         :return: Bool True能够ping通 False 不能ping通
         '''
-        backinfo = os.system('ping -I {0} -c 1 -w 10 {1}' .format(src,ip))
+        backinfo = os.system('ping -I {0} -c 1 -w 5 {1}' .format(src,ip))
         #backinfo 0 能够ping通,1不通
         if not backinfo:
             return True
         else:
             return False
 
+    @staticmethod
+    def icmp_test(dst_mac,ip,iface):
+        '''发送ICMP报文验证是否可达'''
+        packet=Ether(dst=dst_mac)/IP(dst=ip)/ICMP()
+        response=srp1(packet,timeout=2,iface=iface)
+        if response.haslayer(IP):
+            if response[IP].src==ip:
+                return True
+        return False
+
+    @staticmethod
+    def compare_ip(src,ip,iface):
+        '''
+        比较IP是否在同一个网段下,此处假设子网掩码相同
+        '''
+        Netmask = netifaces.ifaddresses(iface)[netifaces.AF_INET][0]['netmask']#获取网卡掩码
+        src_net=IPy.IP(src).make_net(Netmask)#获取源IP网段
+        if ip in IPy.IP(src_net):
+            return True
+        else:
+            return False
+
+    @staticmethod
+    def get_dst_mac(iface,ip):
+        #获取目标MAC
+        dst_mac=''
+        command="arp -n "
+        for line in os.popen(command):
+            line=line.strip().split()
+            if ip in line and iface in line:
+                if ':' in line[2]:
+                    dst_mac =line[2]
+                    break
+
+        return dst_mac
+
+    @staticmethod
+    def get_gateway_mac(iface):
+        #获取网关MAC
+        gateway_mac = ''
+        command = "arp -n "
+        gateway = NCConfig.get_gateway(iface)
+        for line in os.popen(command):
+            line = line.strip().split()
+            if gateway in line and iface in line:
+                if ':' in line[2]:
+                    gateway_mac = line[2]
+                    break
+
+        return gateway_mac
     @staticmethod
     def get_iface():
         '''
