@@ -18,8 +18,8 @@ def port_cherk():
         return jsonify({'status': 2, 'msg': '参数不足'})
 
     try:
-        test_ip = my_port_scan.test_ip(src,ip)#test_ip为portscan_base中的父类静态方法
-        if test_ip:
+        ping_ip = my_port_scan.ping_ip(src,ip)
+        if ping_ip:
             return jsonify({'status':1,'msg':'该IP能ping通'})
         else:
             return jsonify({'status':0,'msg':'该IP无法ping通'})
@@ -42,14 +42,38 @@ def port_start_scan():
         udp_end = params['udpEnd']
         iface=params['iface']#网卡
         src=params['src']#源ip地址
-
         MAC=params['MAC']#目标MAC地址 字符串或为空
     except Exception as e:
         logger.error(e)
         return jsonify({'status': 2, 'msg': '参数不足'})
     try:
-        portscan = my_port_scan(task_id)
-        result = portscan.run(ip=ip, src=src, iface=iface,MAC=MAC, protocol=protocol, tcp_start=tcp_start, tcp_end=tcp_end, udp_start=udp_start, udp_end=udp_end,connect=str(connect))
+        if my_port_scan.compare_ip(src, ip,iface):  # 如果在同一个网段下
+            if not MAC:#未指定MAC
+                dst_mac = my_port_scan.get_dst_mac(iface, ip)
+                if dst_mac:
+                    portscan = my_port_scan(task_id)
+                    result = portscan.run(ip=ip, src=src, iface=iface, MAC=dst_mac, protocol=protocol, tcp_start=tcp_start,tcp_end=tcp_end, udp_start=udp_start, udp_end=udp_end, connect=str(connect))
+                else:
+                    return jsonify({'status': 0, 'msg': 'ARP通讯失败，可能原因：1、静态ARP，2、IP填写错误，3、掩码错误'})#静态ARP时，无法在同一个网段下获取到对方的ARP
+            else:#指定MAC
+                if my_port_scan.icmp_test(MAC,ip,iface):#检测同一网段指定MAC能否发包成功
+                    portscan = my_port_scan(task_id)
+                    result = portscan.run(ip=ip, src=src, iface=iface, MAC=MAC, protocol=protocol, tcp_start=tcp_start,tcp_end=tcp_end, udp_start=udp_start, udp_end=udp_end, connect=str(connect))
+                else:
+                    return jsonify({'status':0,'msg':'请检查IP或MAC是否填写正确'})
+
+        else:#不在同一个网段下
+            if my_port_scan.ping_ip(src,ip):#不同网段下，能ping通
+                gateway_mac=my_port_scan.get_gateway_mac(iface)#不同网段下，能ping通，发给网关处理
+                if gateway_mac:
+                    portscan = my_port_scan(task_id)
+                    result = portscan.run(ip=ip, src=src, iface=iface, MAC=gateway_mac, protocol=protocol,tcp_start=tcp_start, tcp_end=tcp_end, udp_start=udp_start,udp_end=udp_end, connect=str(connect))
+                else:
+                    return jsonify({'status':0,'msg':'获取网关失败'})
+            else:#不同网段下，ping不通
+                return jsonify({'status':0,'msg':'网络错误，请检查网络'})#网线直连，但没在同一个网段下，提示用户设置错误
+        # portscan = my_port_scan(task_id)
+        # result = portscan.run(ip=ip, src=src, iface=iface,MAC=MAC, protocol=protocol, tcp_start=tcp_start, tcp_end=tcp_end, udp_start=udp_start, udp_end=udp_end,connect=str(connect))
         if result['status'] == 1:
             my_port_scan.store(task_id=task_id, result=result['data'])
             my_port_scan.analysis(task_id=task_id, result=result['data'])
